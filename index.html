@@ -59,7 +59,8 @@ const ERR={invalid_url:'URL inválida',not_file:'Tipo de archivo no permitido',b
 const $=s=>document.querySelector(s),esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let groups=[],fh=new Set(),ft=new Set();
 const hosterOf=h=>{for(const d in HOSTERS)if(h===d||h.endsWith('.'+d))return HOSTERS[d];return h};
-const typeOf=(e,k)=>EXT[e]||(k==='img'?IMG:UNK),dlOk=l=>l.t===IMG||['mp3','epub','pdf'].includes(l.ext);
+const typeOf=(e,k)=>EXT[e]||(k==='img'?IMG:UNK),dlOk=l=>l.t===IMG||['mp3','epub','pdf'].includes(l.ext),
+ bot=m=>m&&m.bytes<60000&&/client challenge|just a moment|attention required|access denied|verify (that )?you are (a )?human|security check|captcha|ddos/i.test(m.title);
 const urlsIn=t=>[...new Set((t.match(/https?:\/\/[^\s"'<>]+/g)||[]).map(u=>u.replace(/[.,;)]+$/,'')))];
 const toast=m=>{const t=$('#toast');t.textContent=m;t.classList.add('on');setTimeout(()=>t.classList.remove('on'),1800)};
 const vis=l=>(!fh.size||fh.has(l.h))&&(!ft.size||ft.has(l.t));
@@ -73,7 +74,7 @@ function render(){
     const v=g.links.filter(vis),host=(()=>{try{return new URL(g.url).hostname.replace(/^www\./,'')}catch{return g.url}})();
     h+=`<details open><summary>${g.st==='wait'?'⏳':g.st==='err'?'⚠️':'✅'}<span>${esc(host)}</span><i>${g.st==='ok'?v.length+'/'+g.links.length:''}</i>${g.links.some(dlOk)?`<button class="gi" data-g="${gi}">☑ descargables</button>`:''}</summary>`;
     if(g.st==='err')h+=`<div class="err">${esc(ERR[g.error]||g.error)}</div>`;
-    if(g.st==='ok'&&!v.length)h+=`<div class="err" style="color:#999">${g.links.length?'Ningún enlace pasa los filtros':'Sin enlaces en esta página'+(g.meta?` · recibí ${Math.round(g.meta.bytes/1024)} KB (HTTP ${g.meta.status}), título «${esc(g.meta.title)}», ${g.meta.img} img y ${g.meta.a} enlaces en el HTML`:'')}</div>`;
+    if(g.st==='ok'&&!v.length)h+=`<div class="err" style="color:#999">${g.links.length?'Ningún enlace pasa los filtros':bot(g.meta)?'🛡️ Esta página pide verificación anti-bot y no se puede leer':'Sin enlaces en esta página'+(g.meta?` · recibí ${Math.round(g.meta.bytes/1024)} KB (HTTP ${g.meta.status}), título «${esc(g.meta.title)}», ${g.meta.img} img y ${g.meta.a} enlaces en el HTML`:'')}</div>`;
     g.links.forEach((l,li)=>{if(!vis(l))return;h+=`<label class="lk"><input type="checkbox" data-g="${gi}" data-i="${li}" ${l.sel?'checked':''}>${l.t===IMG?`<img class="th" loading="lazy" referrerpolicy="no-referrer" src="${esc(l.href)}" onerror="this.remove()">`:''}<div><p>${esc(l.text||decodeURIComponent(l.href.split('/').pop().split('?')[0]||l.host).slice(0,90))}</p><small>${esc(l.href)}</small><span class="bd bh">${esc(l.h)}</span>${l.ext?`<span class="bd bt">.${esc(l.ext)}</span>`:''}</div></label>`});
     h+='</details>';
   });
