@@ -9,8 +9,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: cloudflare/wrangler-action@v3
+      - uses: actions/setup-node@v4
         with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          workingDirectory: worker
+          node-version: 22
+      - name: Deploy Worker
+        working-directory: worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set +e
+          npx --yes wrangler@4 deploy > /tmp/out.txt 2>&1
+          code=$?
+          sed 's/\x1b\[[0-9;]*m//g' /tmp/out.txt | tail -c 1500 | tr '\n' ' ' > /tmp/msg.txt
+          if [ $code -ne 0 ]; then echo "::error title=wrangler::$(cat /tmp/msg.txt)"; exit $code; fi
+          echo "::notice title=wrangler::$(cat /tmp/msg.txt)"
