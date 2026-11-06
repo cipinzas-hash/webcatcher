@@ -1,0 +1,9 @@
+{
+  "name": "webcatcher",
+  "main": "src/index.js",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": true,
+  "ratelimits": [
+    { "name": "RL", "namespace_id": "7301", "simple": { "limit": 30, "period": 60 } }
+  ]
+}
