@@ -47,7 +47,7 @@ footer button{padding:9px 8px;font-size:12px}.th{width:56px;height:56px;object-f
 <div class="row"><button id="paste">📋 Pegar</button><button id="clear">🗑️</button><button class="go" id="go">🔍 Capturar</button></div>
 <div id="out"><div class="empty">🕸️ Pega una o varias páginas y toca Capturar.<br>Verás sus enlaces filtrados por hoster y tipo.</div></div>
 </main>
-<footer><button id="vis">✔ vis.</button><button id="none">✖</button><span id="cnt"></span><button id="copy">📋</button><button id="dl">.txt</button><button class="go" id="zip">🖼️ ZIP</button></footer>
+<footer><button id="vis">✔ vis.</button><button id="none">✖</button><span id="cnt"></span><button id="copy">📋</button><button id="dl">.txt</button><button class="go" id="zip">⬇️ ZIP</button></footer>
 </div>
 <div id="toast"></div>
 <script>
@@ -55,11 +55,11 @@ const BASE='https://webcatcher.angst-66394c52.workers.dev',API=BASE+'/extract',I
 const HOSTERS={'mega.nz':'MEGA','mediafire.com':'MediaFire','drive.google.com':'Google Drive','dropbox.com':'Dropbox','1drv.ms':'OneDrive','archive.org':'Archive.org','wetransfer.com':'WeTransfer'};
 const TYPES={'📦 Comprimidos':'zip rar 7z tar gz tgz bz2 xz','🎬 Video':'mp4 mkv avi mov webm m4v','🎵 Audio':'mp3 flac wav m4a ogg opus aac','🖼️ Imágenes':'jpg jpeg png gif webp svg bmp','📄 Documentos':'pdf epub mobi doc docx xls xlsx ppt pptx txt md csv','💿 Instaladores':'exe msi apk dmg deb rpm iso appimage'};
 const UNK='❔ Desconocido',EXT={};for(const[k,v]of Object.entries(TYPES))v.split(' ').forEach(e=>EXT[e]=k);
-const ERR={invalid_url:'URL inválida',not_image:'No es una imagen',blocked:'Bloqueada (dirección interna)',timeout:'La página tardó demasiado',not_html:'No es una página HTML',too_large:'Página demasiado grande',fetch_failed:'No se pudo leer la página',rate_limited:'Demasiadas solicitudes, espera un minuto',forbidden_origin:'Origen no permitido',net:'Sin conexión con el Worker'};
+const ERR={invalid_url:'URL inválida',not_file:'Tipo de archivo no permitido',blocked:'Bloqueada (dirección interna)',timeout:'La página tardó demasiado',not_html:'No es una página HTML',too_large:'Página demasiado grande',fetch_failed:'No se pudo leer la página',rate_limited:'Demasiadas solicitudes, espera un minuto',forbidden_origin:'Origen no permitido',net:'Sin conexión con el Worker'};
 const $=s=>document.querySelector(s),esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let groups=[],fh=new Set(),ft=new Set();
 const hosterOf=h=>{for(const d in HOSTERS)if(h===d||h.endsWith('.'+d))return HOSTERS[d];return h};
-const typeOf=(e,k)=>EXT[e]||(k==='img'?IMG:UNK);
+const typeOf=(e,k)=>EXT[e]||(k==='img'?IMG:UNK),dlOk=l=>l.t===IMG||['mp3','epub','pdf'].includes(l.ext);
 const urlsIn=t=>[...new Set((t.match(/https?:\/\/[^\s"'<>]+/g)||[]).map(u=>u.replace(/[.,;)]+$/,'')))];
 const toast=m=>{const t=$('#toast');t.textContent=m;t.classList.add('on');setTimeout(()=>t.classList.remove('on'),1800)};
 const vis=l=>(!fh.size||fh.has(l.h))&&(!ft.size||ft.has(l.t));
@@ -71,7 +71,7 @@ function render(){
   if(L.length)h+=`<div class="lbl">hoster</div><div class="chips">${ch(cnt('h'),fh,'h')}</div><div class="lbl">tipo</div><div class="chips">${ch(cnt('t'),ft,'t')}</div>`;
   groups.forEach((g,gi)=>{
     const v=g.links.filter(vis),host=(()=>{try{return new URL(g.url).hostname.replace(/^www\./,'')}catch{return g.url}})();
-    h+=`<details open><summary>${g.st==='wait'?'⏳':g.st==='err'?'⚠️':'✅'}<span>${esc(host)}</span><i>${g.st==='ok'?v.length+'/'+g.links.length:''}</i>${g.links.some(l=>l.t===IMG)?`<button class="gi" data-g="${gi}">🖼️ todas</button>`:''}</summary>`;
+    h+=`<details open><summary>${g.st==='wait'?'⏳':g.st==='err'?'⚠️':'✅'}<span>${esc(host)}</span><i>${g.st==='ok'?v.length+'/'+g.links.length:''}</i>${g.links.some(dlOk)?`<button class="gi" data-g="${gi}">☑ descargables</button>`:''}</summary>`;
     if(g.st==='err')h+=`<div class="err">${esc(ERR[g.error]||g.error)}</div>`;
     if(g.st==='ok'&&!v.length)h+=`<div class="err" style="color:#999">${g.links.length?'Ningún enlace pasa los filtros':'Sin enlaces en esta página'}</div>`;
     g.links.forEach((l,li)=>{if(!vis(l))return;h+=`<label class="lk"><input type="checkbox" data-g="${gi}" data-i="${li}" ${l.sel?'checked':''}>${l.t===IMG?`<img class="th" loading="lazy" referrerpolicy="no-referrer" src="${esc(l.href)}" onerror="this.remove()">`:''}<div><p>${esc(l.text||decodeURIComponent(l.href.split('/').pop().split('?')[0]||l.host).slice(0,90))}</p><small>${esc(l.href)}</small><span class="bd bh">${esc(l.h)}</span>${l.ext?`<span class="bd bt">.${esc(l.ext)}</span>`:''}</div></label>`});
@@ -98,7 +98,7 @@ async function run(){
 $('#go').onclick=run;
 $('#clear').onclick=()=>{$('#inp').value='';groups=[];fh.clear();ft.clear();render()};
 $('#paste').onclick=async()=>{try{const t=await navigator.clipboard.readText();$('#inp').value=($('#inp').value+'\n'+t).trim();toast('Pegado')}catch{$('#inp').focus();toast('Tu navegador no deja leer el portapapeles: pega a mano')}};
-$('#out').addEventListener('click',e=>{const gb=e.target.closest('.gi');if(gb){e.preventDefault();groups[gb.dataset.g].links.forEach(l=>{if(l.t===IMG&&vis(l))l.sel=true});return render()}const c=e.target.closest('.chip');if(!c)return;const s=c.dataset.k==='h'?fh:ft;s.has(c.dataset.v)?s.delete(c.dataset.v):s.add(c.dataset.v);render()});
+$('#out').addEventListener('click',e=>{const gb=e.target.closest('.gi');if(gb){e.preventDefault();groups[gb.dataset.g].links.forEach(l=>{if(dlOk(l)&&vis(l))l.sel=true});return render()}const c=e.target.closest('.chip');if(!c)return;const s=c.dataset.k==='h'?fh:ft;s.has(c.dataset.v)?s.delete(c.dataset.v):s.add(c.dataset.v);render()});
 $('#out').addEventListener('change',e=>{const i=e.target.dataset;if(i.g!=null){groups[i.g].links[i.i].sel=e.target.checked;const n=all().filter(l=>l.sel).length;$('#cnt').textContent=n?n+' sel.':''}});
 $('#vis').onclick=()=>{all().forEach(l=>{if(vis(l))l.sel=true});render()};
 $('#none').onclick=()=>{all().forEach(l=>l.sel=false);render()};
@@ -117,21 +117,23 @@ function zip(files){const enc=new TextEncoder(),parts=[],cen=[];let off=0;
   const cs=cen.reduce((a,b)=>a+b.byteLength,0),e=new DataView(new ArrayBuffer(22));e.setUint32(0,0x06054b50,true);e.setUint16(8,files.length,true);e.setUint16(10,files.length,true);e.setUint32(12,cs,true);e.setUint32(16,off,true);
   return new Blob([...parts,...cen,e.buffer],{type:'application/zip'})}
 $('#zip').onclick=async()=>{
-  const q=[];groups.forEach(g=>g.links.forEach(l=>{if(l.sel&&l.t===IMG)q.push({l,ref:g.url,n:q.length})}));
-  if(!q.length)return toast('Selecciona imágenes primero');
-  const total=q.length,files=[];let done=0,bad=0;
-  const stat=()=>$('#stat').textContent=`bajando ${done+bad}/${total}…`;stat();
-  await Promise.all(Array.from({length:Math.min(4,total)},async()=>{while(q.length){const s=q.shift();
+  const q=[];let skip=0;groups.forEach(g=>g.links.forEach(l=>{if(!l.sel)return;if(dlOk(l))q.push({l,ref:g.url,n:q.length});else skip++}));
+  if(!q.length)return toast('Selecciona imágenes, mp3, epub o PDF');
+  const total=q.length,files=[],CAP=150e6,EXTS={'image/jpeg':'jpg','image/png':'png','image/gif':'gif','image/webp':'webp','image/svg+xml':'svg','image/avif':'avif','audio/mpeg':'mp3','application/pdf':'pdf','application/epub+zip':'epub'};
+  let done=0,bad=0,bytes=0,stopped=false;
+  const stat=()=>$('#stat').textContent=`bajando ${done+bad}/${total} · ${(bytes/1e6).toFixed(0)} MB`;stat();
+  await Promise.all(Array.from({length:Math.min(3,total)},async()=>{while(q.length&&!stopped){const s=q.shift();
     try{const r=await fetch(BASE+'/fetch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:s.l.href,referer:s.ref})});
-      const ct=(r.headers.get('content-type')||'').split(';')[0];if(!r.ok||!ct.startsWith('image/'))throw 0;
-      const data=new Uint8Array(await r.arrayBuffer());
-      let nm=(()=>{try{return decodeURIComponent(new URL(s.l.href).pathname.split('/').pop())}catch{return''}})().replace(/[^\w.\-]+/g,'_').slice(-60)||'imagen';
-      if(!/\.[a-z0-9]{2,5}$/i.test(nm))nm+='.'+({'image/jpeg':'jpg','image/png':'png','image/gif':'gif','image/webp':'webp','image/svg+xml':'svg','image/avif':'avif'}[ct]||'img');
-      files.push({name:String(s.n+1).padStart(3,'0')+'-'+nm,data,n:s.n});done++}catch{bad++}stat()}}));
-  render();if(!files.length)return toast('No se pudo bajar ninguna imagen');
-  files.sort((a,b)=>a.n-b.n);
-  const a=document.createElement('a');a.href=URL.createObjectURL(zip(files));a.download='webcatcher-imagenes-'+new Date().toISOString().slice(0,10)+'.zip';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),4000);
-  toast(done+' imágenes'+(bad?' · '+bad+' fallaron':''))};
+      const ct=(r.headers.get('content-type')||'').split(';')[0];if(!r.ok||ct==='application/json')throw 0;
+      const data=new Uint8Array(await r.arrayBuffer());bytes+=data.length;if(bytes>CAP)stopped=true;
+      let nm=(()=>{try{return decodeURIComponent(new URL(s.l.href).pathname.split('/').pop())}catch{return''}})().replace(/[^\w.\-]+/g,'_').slice(-60)||'archivo';
+      if(!/\.[a-z0-9]{2,5}$/i.test(nm))nm+='.'+(EXTS[ct]||'bin');
+      files.push({name:String(s.n+1).padStart(3,'0')+'-'+nm,data,n:s.n,ct});done++}catch{bad++}stat()}}));
+  const left=q.length;render();if(!files.length)return toast('No se pudo bajar ninguno');
+  files.sort((a,b)=>a.n-b.n);const one=files.length===1;
+  const a=document.createElement('a');a.href=URL.createObjectURL(one?new Blob([files[0].data],{type:files[0].ct}):zip(files));
+  a.download=one?files[0].name.replace(/^\d{3}-/,''):'webcatcher-'+new Date().toISOString().slice(0,10)+'.zip';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+  toast(done+' archivo(s)'+(bad?' · '+bad+' fallaron':'')+(left?' · '+left+' sin bajar (tope 150 MB), repite con el resto':'')+(skip?' · '+skip+' omitidos (tipo no soportado)':''))};
 document.addEventListener('visibilitychange',async()=>{if(document.hidden||!navigator.permissions)return;
   try{const s=await navigator.permissions.query({name:'clipboard-read'});if(s.state!=='granted')return;
     const nu=urlsIn(await navigator.clipboard.readText()).filter(u=>!$('#inp').value.includes(u));if(nu.length){$('#inp').value=($('#inp').value+'\n'+nu.join('\n')).trim();toast(nu.length+' URL(s) detectadas en el portapapeles')}}catch{}});

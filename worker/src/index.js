@@ -1,5 +1,5 @@
 const ALLOW = 'https://cipinzas-hash.github.io';
-const MAX_BYTES = 1_500_000, MAX_IMG = 8_000_000, TIMEOUT_MS = 8000, MAX_LINKS = 3000, MAX_REDIRECTS = 4;
+const MAX_BYTES = 1_500_000, MAX_IMG = 8_000_000, MAX_FILE = 40_000_000, TIMEOUT_MS = 8000, MAX_LINKS = 3000, MAX_REDIRECTS = 4;
 const UA = 'Mozilla/5.0 (compatible; WebCatcher/1.0)';
 const CORS = { 'Access-Control-Allow-Origin': ALLOW, 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type', Vary: 'Origin' };
 const reply = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...CORS, 'Content-Type': 'application/json' } });
@@ -29,12 +29,22 @@ function best(set) {
   return top;
 }
 
+const FILE_EXT = /^(png|jpe?g|gif|webp|svg|bmp|avif|mp3|epub|pdf)$/;
+const fileType = (ct, url) => {
+  const t = ct.split(';')[0].trim().toLowerCase(), e = extOf(url);
+  if (/^(image|audio)\//.test(t) || t === 'application/pdf' || t === 'application/epub+zip') return t;
+  if (/octet-stream|binary/.test(t) && FILE_EXT.test(e)) return { mp3: 'audio/mpeg', pdf: 'application/pdf', epub: 'application/epub+zip' }[e] || 'image/' + e.replace('jpg', 'jpeg');
+  return '';
+};
+
 async function download(start, { img = false, referer = '' } = {}) {
   let url = start;
   for (let i = 0; i <= MAX_REDIRECTS; i++) {
-    const headers = { 'User-Agent': UA, Accept: img ? 'image/*,*/*;q=0.5' : 'text/html,application/xhtml+xml' };
+    const headers = { 'User-Agent': UA, Accept: img ? '*/*' : 'text/html,application/xhtml+xml' };
     if (referer) headers.Referer = referer;
-    const res = await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(TIMEOUT_MS), headers });
+    const ac = new AbortController(), tm = setTimeout(() => ac.abort(), TIMEOUT_MS);
+    const res = await fetch(url, { redirect: 'manual', signal: img ? ac.signal : AbortSignal.timeout(TIMEOUT_MS), headers });
+    clearTimeout(tm);
     if (res.status >= 300 && res.status < 400 && res.headers.get('location')) {
       let next; try { next = new URL(res.headers.get('location'), url); } catch { throw 'fetch_failed'; }
       if (!okUrl(next)) throw 'blocked';
@@ -42,9 +52,15 @@ async function download(start, { img = false, referer = '' } = {}) {
     }
     if (!res.ok) throw 'fetch_failed';
     const ct = res.headers.get('content-type') || '';
-    const imgOk = /^image\//i.test(ct) || (/octet-stream/i.test(ct) && /^(png|jpe?g|gif|webp|svg|bmp|avif)$/.test(extOf(url)));
-    if (img ? !imgOk : !/html/i.test(ct)) throw img ? 'not_image' : 'not_html';
-    const cap = img ? MAX_IMG : MAX_BYTES, reader = res.body.getReader(), chunks = []; let total = 0;
+    if (img) {
+      const type = fileType(ct, url);
+      if (!type) throw 'not_file';
+      const cap = /^image\//.test(type) ? MAX_IMG : MAX_FILE;
+      if (+res.headers.get('content-length') > cap) throw 'too_large';
+      return { stream: res.body, type, cap, finalUrl: url };
+    }
+    if (!/html/i.test(ct)) throw 'not_html';
+    const cap = MAX_BYTES, reader = res.body.getReader(), chunks = []; let total = 0;
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
@@ -54,7 +70,6 @@ async function download(start, { img = false, referer = '' } = {}) {
     }
     const buf = new Uint8Array(total); let o = 0;
     for (const c of chunks) { buf.set(c, o); o += c.length; }
-    if (img) return { buf, type: /^image\//i.test(ct) ? ct.split(';')[0] : 'image/' + (extOf(url) || 'png'), finalUrl: url };
     const cs = ct.match(/charset=([\w-]+)/i);
     let html; try { html = new TextDecoder(cs ? cs[1] : 'utf-8').decode(buf); } catch { html = new TextDecoder().decode(buf); }
     return { html, finalUrl: url };
@@ -107,8 +122,10 @@ export default {
     let referer = ''; try { const r = new URL(String(body.referer || '')); if (okUrl(r)) referer = r.href; } catch {}
     try {
       if (img) {
-        const { buf, type } = await download(u, { img: true, referer });
-        return new Response(buf, { headers: { ...CORS, 'Content-Type': type, 'Cache-Control': 'private, max-age=3600' } });
+        const { stream, type, cap } = await download(u, { img: true, referer });
+        let n = 0;
+        const body = stream.pipeThrough(new TransformStream({ transform(c, ctl) { n += c.byteLength; n > cap ? ctl.error(new Error('too_large')) : ctl.enqueue(c); } }));
+        return new Response(body, { headers: { ...CORS, 'Content-Type': type, 'Cache-Control': 'private, max-age=3600' } });
       }
       const { html, finalUrl } = await download(u);
       return reply({ url: target, finalUrl: finalUrl.href, ok: true, links: await extract(html, finalUrl), error: null });
