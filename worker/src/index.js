@@ -1,5 +1,6 @@
 const ALLOW = 'https://cipinzas-hash.github.io';
-const MAX_BYTES = 1_500_000, TIMEOUT_MS = 8000, MAX_LINKS = 2000, MAX_REDIRECTS = 4;
+const MAX_BYTES = 1_500_000, MAX_IMG = 8_000_000, TIMEOUT_MS = 8000, MAX_LINKS = 3000, MAX_REDIRECTS = 4;
+const UA = 'Mozilla/5.0 (compatible; WebCatcher/1.0)';
 const CORS = { 'Access-Control-Allow-Origin': ALLOW, 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type', Vary: 'Origin' };
 const reply = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...CORS, 'Content-Type': 'application/json' } });
 const fail = (url, error, status = 200) => reply({ url, finalUrl: null, ok: false, links: [], error }, status);
@@ -15,36 +16,46 @@ function blocked(host) {
 const okUrl = (u) => /^https?:$/.test(u.protocol) && !blocked(u.hostname);
 
 function extOf(u) {
-  const pick = (s) => { const m = (s || '').match(/\.([a-z0-9]{1,8})$/i); return m ? m[1].toLowerCase() : ''; };
+  const pick = (s) => { const m = (s || '').split(';')[0].match(/\.([a-z0-9]{1,8})$/i); return m ? m[1].toLowerCase() : ''; };
   let seg = u.pathname.split('/').pop() || '';
   try { seg = decodeURIComponent(seg); } catch {}
   let e = pick(seg);
   if (!e) for (const k of ['filename', 'file', 'name']) { e = pick(u.searchParams.get(k)); if (e) break; }
   return e;
 }
+function best(set) {
+  let top = '', w = -1;
+  for (const p of (set || '').split(',')) { const [u, d] = p.trim().split(/\s+/); if (!u) continue; const n = parseFloat(d) || 0; if (n >= w) { w = n; top = u; } }
+  return top;
+}
 
-async function download(start) {
+async function download(start, { img = false, referer = '' } = {}) {
   let url = start;
   for (let i = 0; i <= MAX_REDIRECTS; i++) {
-    const res = await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(TIMEOUT_MS), headers: { 'User-Agent': 'Mozilla/5.0 (compatible; WebCatcher/1.0)', Accept: 'text/html,application/xhtml+xml' } });
+    const headers = { 'User-Agent': UA, Accept: img ? 'image/*,*/*;q=0.5' : 'text/html,application/xhtml+xml' };
+    if (referer) headers.Referer = referer;
+    const res = await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(TIMEOUT_MS), headers });
     if (res.status >= 300 && res.status < 400 && res.headers.get('location')) {
       let next; try { next = new URL(res.headers.get('location'), url); } catch { throw 'fetch_failed'; }
       if (!okUrl(next)) throw 'blocked';
       url = next; continue;
     }
     if (!res.ok) throw 'fetch_failed';
-    if (!/html/i.test(res.headers.get('content-type') || '')) throw 'not_html';
-    const reader = res.body.getReader(), chunks = []; let total = 0;
+    const ct = res.headers.get('content-type') || '';
+    const imgOk = /^image\//i.test(ct) || (/octet-stream/i.test(ct) && /^(png|jpe?g|gif|webp|svg|bmp|avif)$/.test(extOf(url)));
+    if (img ? !imgOk : !/html/i.test(ct)) throw img ? 'not_image' : 'not_html';
+    const cap = img ? MAX_IMG : MAX_BYTES, reader = res.body.getReader(), chunks = []; let total = 0;
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
       total += value.length;
-      if (total > MAX_BYTES) { reader.cancel(); throw 'too_large'; }
+      if (total > cap) { reader.cancel(); throw 'too_large'; }
       chunks.push(value);
     }
     const buf = new Uint8Array(total); let o = 0;
     for (const c of chunks) { buf.set(c, o); o += c.length; }
-    const cs = (res.headers.get('content-type') || '').match(/charset=([\w-]+)/i);
+    if (img) return { buf, type: /^image\//i.test(ct) ? ct.split(';')[0] : 'image/' + (extOf(url) || 'png'), finalUrl: url };
+    const cs = ct.match(/charset=([\w-]+)/i);
     let html; try { html = new TextDecoder(cs ? cs[1] : 'utf-8').decode(buf); } catch { html = new TextDecoder().decode(buf); }
     return { html, finalUrl: url };
   }
@@ -53,11 +64,12 @@ async function download(start) {
 
 async function extract(html, base) {
   const links = new Map();
-  const add = (raw, text) => {
-    if (!raw || raw.trim().startsWith('#') || links.size >= MAX_LINKS) return null;
+  const add = (raw, text, kind) => {
+    if (!raw || raw.trim().startsWith('#') || raw.trim().startsWith('data:') || links.size >= MAX_LINKS) return null;
     let u; try { u = new URL(raw.trim(), base); } catch { return null; }
     if (!/^https?:$/.test(u.protocol) || links.has(u.href)) return null;
     const e = { href: u.href, text: text || '', host: u.hostname.replace(/^www\./, ''), ext: extOf(u) };
+    if (kind) e.kind = kind;
     links.set(u.href, e); return e;
   };
   let cur = null;
@@ -67,8 +79,13 @@ async function extract(html, base) {
       text(t) { if (cur && cur.text.length < 160) cur.text += t.text; },
     })
     .on('video[src],audio[src],source[src],embed[src]', { element(el) { add(el.getAttribute('src')); } })
+    .on('img', { element(el) { for (const a of ['src', 'data-src', 'data-original', 'data-lazy-src']) add(el.getAttribute(a), el.getAttribute('alt') || '', 'img'); } })
+    .on('img[srcset],img[data-srcset],source[srcset],source[data-srcset]', { element(el) { add(best(el.getAttribute('srcset') || el.getAttribute('data-srcset')), '', 'img'); } })
+    .on('meta[property="og:image"]', { element(el) { add(el.getAttribute('content'), '', 'img'); } })
+    .on('[style*="url("]', { element(el) { const m = (el.getAttribute('style') || '').match(/url\(\s*['"]?([^'")]+)/i); if (m) add(m[1], '', 'img'); } })
     .transform(new Response(html, { headers: { 'content-type': 'text/html' } })).text();
-  for (const m of html.matchAll(/https?:\/\/[^\s"'<>\\)]+/g)) add(m[0].replace(/&amp;/g, '&').replace(/[.,;:]+$/, ''));
+  const plain = html.replace(/&quot;|&#34;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&amp;/g, '&');
+  for (const m of plain.matchAll(/https?:\/\/[^\s"'<>\\)]+/g)) add(m[0].replace(/[.,;:]+$/, ''));
   return [...links.values()];
 }
 
@@ -76,21 +93,28 @@ export default {
   async fetch(req, env) {
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
     const path = new URL(req.url).pathname;
-    if (req.method !== 'POST' || path !== '/extract') return reply({ error: 'not_found' }, 404);
+    if (req.method !== 'POST' || (path !== '/extract' && path !== '/fetch')) return reply({ error: 'not_found' }, 404);
     if (req.headers.get('Origin') !== ALLOW) return reply({ error: 'forbidden_origin' }, 403);
-    const { success } = await env.RL.limit({ key: req.headers.get('CF-Connecting-IP') || 'anon' });
+    const img = path === '/fetch', st = img ? 502 : 200;
+    const { success } = await (img ? env.RL2 : env.RL).limit({ key: req.headers.get('CF-Connecting-IP') || 'anon' });
     if (!success) return reply({ error: 'rate_limited' }, 429);
-    let target = '';
-    try { target = String((await req.json()).url || ''); } catch {}
-    let u; try { u = new URL(target); } catch { return fail(target, 'invalid_url'); }
-    if (!/^https?:$/.test(u.protocol)) return fail(target, 'invalid_url');
-    if (blocked(u.hostname)) return fail(target, 'blocked');
+    let body = {};
+    try { body = await req.json(); } catch {}
+    const target = String(body.url || '');
+    let u; try { u = new URL(target); } catch { return fail(target, 'invalid_url', st); }
+    if (!/^https?:$/.test(u.protocol)) return fail(target, 'invalid_url', st);
+    if (blocked(u.hostname)) return fail(target, 'blocked', st);
+    let referer = ''; try { const r = new URL(String(body.referer || '')); if (okUrl(r)) referer = r.href; } catch {}
     try {
+      if (img) {
+        const { buf, type } = await download(u, { img: true, referer });
+        return new Response(buf, { headers: { ...CORS, 'Content-Type': type, 'Cache-Control': 'private, max-age=3600' } });
+      }
       const { html, finalUrl } = await download(u);
       return reply({ url: target, finalUrl: finalUrl.href, ok: true, links: await extract(html, finalUrl), error: null });
     } catch (e) {
-      if (typeof e === 'string') return fail(target, e);
-      return fail(target, e && e.name === 'TimeoutError' ? 'timeout' : 'fetch_failed');
+      if (typeof e === 'string') return fail(target, e, st);
+      return fail(target, e && e.name === 'TimeoutError' ? 'timeout' : 'fetch_failed', st);
     }
   },
 };

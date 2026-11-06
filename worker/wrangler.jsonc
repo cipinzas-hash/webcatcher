@@ -4,6 +4,7 @@
   "compatibility_date": "2026-10-01",
   "workers_dev": true,
   "ratelimits": [
-    { "name": "RL", "namespace_id": "7301", "simple": { "limit": 30, "period": 60 } }
+    { "name": "RL", "namespace_id": "7301", "simple": { "limit": 30, "period": 60 } },
+    { "name": "RL2", "namespace_id": "7302", "simple": { "limit": 60, "period": 60 } }
   ]
 }

@@ -36,6 +36,7 @@ footer{background:#111;padding:8px 10px calc(8px + env(safe-area-inset-bottom));
 footer button{background:#222;border-color:#333;color:#f0f0f0;padding:9px 10px}footer .go{background:#2e7d52;border-color:#2e7d52;flex:1}
 footer span{font:600 14px 'Caveat',cursive;color:#666;padding-left:2px}
 .empty{text-align:center;color:#999;font-size:13px;padding:28px 10px}
+footer button{padding:9px 8px;font-size:12px}.th{width:56px;height:56px;object-fit:cover;border-radius:8px;background:#f0f0f0;flex:none}.gi{font-size:11px;padding:4px 8px}
 #toast{position:fixed;left:50%;bottom:76px;transform:translateX(-50%);background:#111;color:#fff;border-radius:10px;padding:9px 14px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none}
 #toast.on{opacity:1}
 </style></head><body>
@@ -46,19 +47,19 @@ footer span{font:600 14px 'Caveat',cursive;color:#666;padding-left:2px}
 <div class="row"><button id="paste">📋 Pegar</button><button id="clear">🗑️</button><button class="go" id="go">🔍 Capturar</button></div>
 <div id="out"><div class="empty">🕸️ Pega una o varias páginas y toca Capturar.<br>Verás sus enlaces filtrados por hoster y tipo.</div></div>
 </main>
-<footer><button id="vis">✔ visibles</button><button id="none">✖</button><span id="cnt"></span><button class="go" id="copy">📋 Copiar</button><button id="dl">⬇️ .txt</button></footer>
+<footer><button id="vis">✔ vis.</button><button id="none">✖</button><span id="cnt"></span><button id="copy">📋</button><button id="dl">.txt</button><button class="go" id="zip">🖼️ ZIP</button></footer>
 </div>
 <div id="toast"></div>
 <script>
-const API='https://webcatcher.angst-66394c52.workers.dev/extract';
+const BASE='https://webcatcher.angst-66394c52.workers.dev',API=BASE+'/extract',IMG='🖼️ Imágenes';
 const HOSTERS={'mega.nz':'MEGA','mediafire.com':'MediaFire','drive.google.com':'Google Drive','dropbox.com':'Dropbox','1drv.ms':'OneDrive','archive.org':'Archive.org','wetransfer.com':'WeTransfer'};
 const TYPES={'📦 Comprimidos':'zip rar 7z tar gz tgz bz2 xz','🎬 Video':'mp4 mkv avi mov webm m4v','🎵 Audio':'mp3 flac wav m4a ogg opus aac','🖼️ Imágenes':'jpg jpeg png gif webp svg bmp','📄 Documentos':'pdf epub mobi doc docx xls xlsx ppt pptx txt md csv','💿 Instaladores':'exe msi apk dmg deb rpm iso appimage'};
 const UNK='❔ Desconocido',EXT={};for(const[k,v]of Object.entries(TYPES))v.split(' ').forEach(e=>EXT[e]=k);
-const ERR={invalid_url:'URL inválida',blocked:'Bloqueada (dirección interna)',timeout:'La página tardó demasiado',not_html:'No es una página HTML',too_large:'Página demasiado grande',fetch_failed:'No se pudo leer la página',rate_limited:'Demasiadas solicitudes, espera un minuto',forbidden_origin:'Origen no permitido',net:'Sin conexión con el Worker'};
+const ERR={invalid_url:'URL inválida',not_image:'No es una imagen',blocked:'Bloqueada (dirección interna)',timeout:'La página tardó demasiado',not_html:'No es una página HTML',too_large:'Página demasiado grande',fetch_failed:'No se pudo leer la página',rate_limited:'Demasiadas solicitudes, espera un minuto',forbidden_origin:'Origen no permitido',net:'Sin conexión con el Worker'};
 const $=s=>document.querySelector(s),esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let groups=[],fh=new Set(),ft=new Set();
 const hosterOf=h=>{for(const d in HOSTERS)if(h===d||h.endsWith('.'+d))return HOSTERS[d];return h};
-const typeOf=e=>EXT[e]||UNK;
+const typeOf=(e,k)=>EXT[e]||(k==='img'?IMG:UNK);
 const urlsIn=t=>[...new Set((t.match(/https?:\/\/[^\s"'<>]+/g)||[]).map(u=>u.replace(/[.,;)]+$/,'')))];
 const toast=m=>{const t=$('#toast');t.textContent=m;t.classList.add('on');setTimeout(()=>t.classList.remove('on'),1800)};
 const vis=l=>(!fh.size||fh.has(l.h))&&(!ft.size||ft.has(l.t));
@@ -70,10 +71,10 @@ function render(){
   if(L.length)h+=`<div class="lbl">hoster</div><div class="chips">${ch(cnt('h'),fh,'h')}</div><div class="lbl">tipo</div><div class="chips">${ch(cnt('t'),ft,'t')}</div>`;
   groups.forEach((g,gi)=>{
     const v=g.links.filter(vis),host=(()=>{try{return new URL(g.url).hostname.replace(/^www\./,'')}catch{return g.url}})();
-    h+=`<details open><summary>${g.st==='wait'?'⏳':g.st==='err'?'⚠️':'✅'}<span>${esc(host)}</span><i>${g.st==='ok'?v.length+'/'+g.links.length:''}</i></summary>`;
+    h+=`<details open><summary>${g.st==='wait'?'⏳':g.st==='err'?'⚠️':'✅'}<span>${esc(host)}</span><i>${g.st==='ok'?v.length+'/'+g.links.length:''}</i>${g.links.some(l=>l.t===IMG)?`<button class="gi" data-g="${gi}">🖼️ todas</button>`:''}</summary>`;
     if(g.st==='err')h+=`<div class="err">${esc(ERR[g.error]||g.error)}</div>`;
     if(g.st==='ok'&&!v.length)h+=`<div class="err" style="color:#999">${g.links.length?'Ningún enlace pasa los filtros':'Sin enlaces en esta página'}</div>`;
-    g.links.forEach((l,li)=>{if(!vis(l))return;h+=`<label class="lk"><input type="checkbox" data-g="${gi}" data-i="${li}" ${l.sel?'checked':''}><div><p>${esc(l.text||decodeURIComponent(l.href.split('/').pop().split('?')[0]||l.host).slice(0,90))}</p><small>${esc(l.href)}</small><span class="bd bh">${esc(l.h)}</span>${l.ext?`<span class="bd bt">.${esc(l.ext)}</span>`:''}</div></label>`});
+    g.links.forEach((l,li)=>{if(!vis(l))return;h+=`<label class="lk"><input type="checkbox" data-g="${gi}" data-i="${li}" ${l.sel?'checked':''}>${l.t===IMG?`<img class="th" loading="lazy" referrerpolicy="no-referrer" src="${esc(l.href)}" onerror="this.remove()">`:''}<div><p>${esc(l.text||decodeURIComponent(l.href.split('/').pop().split('?')[0]||l.host).slice(0,90))}</p><small>${esc(l.href)}</small><span class="bd bh">${esc(l.h)}</span>${l.ext?`<span class="bd bt">.${esc(l.ext)}</span>`:''}</div></label>`});
     h+='</details>';
   });
   if(!groups.length)h='<div class="empty">🕸️ Pega una o varias páginas y toca Capturar.<br>Verás sus enlaces filtrados por hoster y tipo.</div>';
@@ -85,7 +86,7 @@ async function grab(g){
   try{
     const r=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:g.url})});
     const j=await r.json();
-    if(j.ok){g.st='ok';g.links=j.links.map(l=>({...l,h:hosterOf(l.host),t:typeOf(l.ext),sel:false}))}else{g.st='err';g.error=j.error||'fetch_failed'}
+    if(j.ok){g.st='ok';g.links=j.links.map(l=>({...l,h:hosterOf(l.host),t:typeOf(l.ext,l.kind),sel:false}))}else{g.st='err';g.error=j.error||'fetch_failed'}
   }catch{g.st='err';g.error='net'}
   render();
 }
@@ -97,7 +98,7 @@ async function run(){
 $('#go').onclick=run;
 $('#clear').onclick=()=>{$('#inp').value='';groups=[];fh.clear();ft.clear();render()};
 $('#paste').onclick=async()=>{try{const t=await navigator.clipboard.readText();$('#inp').value=($('#inp').value+'\n'+t).trim();toast('Pegado')}catch{$('#inp').focus();toast('Tu navegador no deja leer el portapapeles: pega a mano')}};
-$('#out').addEventListener('click',e=>{const c=e.target.closest('.chip');if(!c)return;const s=c.dataset.k==='h'?fh:ft;s.has(c.dataset.v)?s.delete(c.dataset.v):s.add(c.dataset.v);render()});
+$('#out').addEventListener('click',e=>{const gb=e.target.closest('.gi');if(gb){e.preventDefault();groups[gb.dataset.g].links.forEach(l=>{if(l.t===IMG&&vis(l))l.sel=true});return render()}const c=e.target.closest('.chip');if(!c)return;const s=c.dataset.k==='h'?fh:ft;s.has(c.dataset.v)?s.delete(c.dataset.v):s.add(c.dataset.v);render()});
 $('#out').addEventListener('change',e=>{const i=e.target.dataset;if(i.g!=null){groups[i.g].links[i.i].sel=e.target.checked;const n=all().filter(l=>l.sel).length;$('#cnt').textContent=n?n+' sel.':''}});
 $('#vis').onclick=()=>{all().forEach(l=>{if(vis(l))l.sel=true});render()};
 $('#none').onclick=()=>{all().forEach(l=>l.sel=false);render()};
@@ -105,6 +106,32 @@ const picked=()=>all().filter(l=>l.sel).map(l=>l.href);
 $('#copy').onclick=async()=>{const p=picked();if(!p.length)return toast('Selecciona enlaces primero');const t=p.join('\n');
   try{await navigator.clipboard.writeText(t)}catch{const a=document.createElement('textarea');a.value=t;document.body.appendChild(a);a.select();document.execCommand('copy');a.remove()}toast(p.length+' enlaces copiados')};
 $('#dl').onclick=()=>{const p=picked();if(!p.length)return toast('Selecciona enlaces primero');const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([p.join('\n')],{type:'text/plain'}));a.download='webcatcher-'+new Date().toISOString().slice(0,10)+'.txt';a.click();URL.revokeObjectURL(a.href)};
+const crcT=(()=>{const t=[];for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0}return t})();
+const crc32=b=>{let c=-1;for(let i=0;i<b.length;i++)c=crcT[(c^b[i])&255]^(c>>>8);return(c^-1)>>>0};
+function zip(files){const enc=new TextEncoder(),parts=[],cen=[];let off=0;
+  for(const f of files){const n=enc.encode(f.name),c=crc32(f.data),sz=f.data.length;
+    const h=new DataView(new ArrayBuffer(30));h.setUint32(0,0x04034b50,true);h.setUint16(4,20,true);h.setUint16(6,0x0800,true);h.setUint16(12,0x21,true);h.setUint32(14,c,true);h.setUint32(18,sz,true);h.setUint32(22,sz,true);h.setUint16(26,n.length,true);
+    parts.push(h.buffer,n,f.data);
+    const g=new DataView(new ArrayBuffer(46));g.setUint32(0,0x02014b50,true);g.setUint16(4,20,true);g.setUint16(6,20,true);g.setUint16(8,0x0800,true);g.setUint16(14,0x21,true);g.setUint32(16,c,true);g.setUint32(20,sz,true);g.setUint32(24,sz,true);g.setUint16(28,n.length,true);g.setUint32(42,off,true);
+    cen.push(g.buffer,n);off+=30+n.length+sz}
+  const cs=cen.reduce((a,b)=>a+b.byteLength,0),e=new DataView(new ArrayBuffer(22));e.setUint32(0,0x06054b50,true);e.setUint16(8,files.length,true);e.setUint16(10,files.length,true);e.setUint32(12,cs,true);e.setUint32(16,off,true);
+  return new Blob([...parts,...cen,e.buffer],{type:'application/zip'})}
+$('#zip').onclick=async()=>{
+  const q=[];groups.forEach(g=>g.links.forEach(l=>{if(l.sel&&l.t===IMG)q.push({l,ref:g.url,n:q.length})}));
+  if(!q.length)return toast('Selecciona imágenes primero');
+  const total=q.length,files=[];let done=0,bad=0;
+  const stat=()=>$('#stat').textContent=`bajando ${done+bad}/${total}…`;stat();
+  await Promise.all(Array.from({length:Math.min(4,total)},async()=>{while(q.length){const s=q.shift();
+    try{const r=await fetch(BASE+'/fetch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:s.l.href,referer:s.ref})});
+      const ct=(r.headers.get('content-type')||'').split(';')[0];if(!r.ok||!ct.startsWith('image/'))throw 0;
+      const data=new Uint8Array(await r.arrayBuffer());
+      let nm=(()=>{try{return decodeURIComponent(new URL(s.l.href).pathname.split('/').pop())}catch{return''}})().replace(/[^\w.\-]+/g,'_').slice(-60)||'imagen';
+      if(!/\.[a-z0-9]{2,5}$/i.test(nm))nm+='.'+({'image/jpeg':'jpg','image/png':'png','image/gif':'gif','image/webp':'webp','image/svg+xml':'svg','image/avif':'avif'}[ct]||'img');
+      files.push({name:String(s.n+1).padStart(3,'0')+'-'+nm,data,n:s.n});done++}catch{bad++}stat()}}));
+  render();if(!files.length)return toast('No se pudo bajar ninguna imagen');
+  files.sort((a,b)=>a.n-b.n);
+  const a=document.createElement('a');a.href=URL.createObjectURL(zip(files));a.download='webcatcher-imagenes-'+new Date().toISOString().slice(0,10)+'.zip';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+  toast(done+' imágenes'+(bad?' · '+bad+' fallaron':''))};
 document.addEventListener('visibilitychange',async()=>{if(document.hidden||!navigator.permissions)return;
   try{const s=await navigator.permissions.query({name:'clipboard-read'});if(s.state!=='granted')return;
     const nu=urlsIn(await navigator.clipboard.readText()).filter(u=>!$('#inp').value.includes(u));if(nu.length){$('#inp').value=($('#inp').value+'\n'+nu.join('\n')).trim();toast(nu.length+' URL(s) detectadas en el portapapeles')}}catch{}});
