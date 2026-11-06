@@ -72,7 +72,7 @@ async function download(start, { img = false, referer = '' } = {}) {
     for (const c of chunks) { buf.set(c, o); o += c.length; }
     const cs = ct.match(/charset=([\w-]+)/i);
     let html; try { html = new TextDecoder(cs ? cs[1] : 'utf-8').decode(buf); } catch { html = new TextDecoder().decode(buf); }
-    return { html, finalUrl: url };
+    return { html, finalUrl: url, status: res.status, bytes: total };
   }
   throw 'fetch_failed';
 }
@@ -127,8 +127,10 @@ export default {
         const body = stream.pipeThrough(new TransformStream({ transform(c, ctl) { n += c.byteLength; n > cap ? ctl.error(new Error('too_large')) : ctl.enqueue(c); } }));
         return new Response(body, { headers: { ...CORS, 'Content-Type': type, 'Cache-Control': 'private, max-age=3600' } });
       }
-      const { html, finalUrl } = await download(u);
-      return reply({ url: target, finalUrl: finalUrl.href, ok: true, links: await extract(html, finalUrl), error: null });
+      const { html, finalUrl, status, bytes } = await download(u);
+      const links = await extract(html, finalUrl);
+      const meta = links.length ? undefined : { status, bytes, title: (html.match(/<title[^>]*>([^<]{0,80})/i) || [])[1] || '', img: (html.match(/<img\b/gi) || []).length, a: (html.match(/<a\s/gi) || []).length };
+      return reply({ url: target, finalUrl: finalUrl.href, ok: true, links, error: null, meta });
     } catch (e) {
       if (typeof e === 'string') return fail(target, e, st);
       return fail(target, e && e.name === 'TimeoutError' ? 'timeout' : 'fetch_failed', st);

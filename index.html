@@ -73,7 +73,7 @@ function render(){
     const v=g.links.filter(vis),host=(()=>{try{return new URL(g.url).hostname.replace(/^www\./,'')}catch{return g.url}})();
     h+=`<details open><summary>${g.st==='wait'?'⏳':g.st==='err'?'⚠️':'✅'}<span>${esc(host)}</span><i>${g.st==='ok'?v.length+'/'+g.links.length:''}</i>${g.links.some(dlOk)?`<button class="gi" data-g="${gi}">☑ descargables</button>`:''}</summary>`;
     if(g.st==='err')h+=`<div class="err">${esc(ERR[g.error]||g.error)}</div>`;
-    if(g.st==='ok'&&!v.length)h+=`<div class="err" style="color:#999">${g.links.length?'Ningún enlace pasa los filtros':'Sin enlaces en esta página'}</div>`;
+    if(g.st==='ok'&&!v.length)h+=`<div class="err" style="color:#999">${g.links.length?'Ningún enlace pasa los filtros':'Sin enlaces en esta página'+(g.meta?` · recibí ${Math.round(g.meta.bytes/1024)} KB (HTTP ${g.meta.status}), título «${esc(g.meta.title)}», ${g.meta.img} img y ${g.meta.a} enlaces en el HTML`:'')}</div>`;
     g.links.forEach((l,li)=>{if(!vis(l))return;h+=`<label class="lk"><input type="checkbox" data-g="${gi}" data-i="${li}" ${l.sel?'checked':''}>${l.t===IMG?`<img class="th" loading="lazy" referrerpolicy="no-referrer" src="${esc(l.href)}" onerror="this.remove()">`:''}<div><p>${esc(l.text||decodeURIComponent(l.href.split('/').pop().split('?')[0]||l.host).slice(0,90))}</p><small>${esc(l.href)}</small><span class="bd bh">${esc(l.h)}</span>${l.ext?`<span class="bd bt">.${esc(l.ext)}</span>`:''}</div></label>`});
     h+='</details>';
   });
@@ -86,7 +86,7 @@ async function grab(g){
   try{
     const r=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:g.url})});
     const j=await r.json();
-    if(j.ok){g.st='ok';g.links=j.links.map(l=>({...l,h:hosterOf(l.host),t:typeOf(l.ext,l.kind),sel:false}))}else{g.st='err';g.error=j.error||'fetch_failed'}
+    if(j.ok){g.st='ok';g.meta=j.meta||null;g.links=j.links.map(l=>({...l,h:hosterOf(l.host),t:typeOf(l.ext,l.kind),sel:false}))}else{g.st='err';g.error=j.error||'fetch_failed'}
   }catch{g.st='err';g.error='net'}
   render();
 }
